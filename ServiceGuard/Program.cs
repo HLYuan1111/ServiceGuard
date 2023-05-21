@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
 using ServiceGuard.Middlewares;
+using ServiceGuard.AppLibs;
 
 // Main Program
 
@@ -21,18 +22,22 @@ configuration.AddEnvironmentVariables();
 builder.Services.AddControllers();
 //builder.Services.AddControllersWithViews(); // 控制器路由視圖服務 index.cshtml
 
+/************************************************
+* NewtonsoftJson
+*/
 builder.Services.AddMvcCore().AddNewtonsoftJson();
 
 /************************************************
-* OpenApi: Swagger >> [/swagger/index.html]
+* OpenApi: Swagger >> [ .../swagger/index.html ]
 */
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => {
-    options.CustomSchemaIds(type => $"{type.Name}_{System.Guid.NewGuid()}");
+    // 避免 Swagger 的 SchemaId 相同 (以'名稱_Id'避免相同名稱)
+    options.CustomSchemaIds(type => $"{type.Name}_{Guid.NewGuid()}");
 });
 
 /************************************************
-* 跨域策略
+* CorsPolicy 跨域策略
 * >> 允許來自不同源(域名、端口或協議)的 HTTP請求
 * >> 預設情況瀏覽器會阻擋跨域請求，以避免惡意攻擊
 */
@@ -84,13 +89,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 });
 
 /************************************************
-* 資料庫
+* Database 資料庫
 */
-// pgsql
-builder.Services.AddEntityFrameworkNpgsql().AddDbContext<ServiceGuard.Databases.DbEntities>();
-builder.Services.AddLogging();
-// mssql
+// PG-SQL
+builder.Services.AddEntityFrameworkNpgsql().AddDbContext<ServiceGuard.Sample.Databases.Npgsql_UserManagerDbCtx>();
+// MS-SQL
+// todo:
 
+/************************************************
+* Others | Test
+*/
+
+// 設定請求正文最大緩衝區大小
+builder.Services.Configure<IISServerOptions>(options  => {
+    options.MaxRequestBodyBufferSize = AppSettings.MaxRequestBodyBufferSize;
+});
+
+builder.Services.AddLogging(); // 依賴注入: ILogger
 var app = builder.Build();
 #endregion
 
@@ -118,6 +133,14 @@ app.UseAuthorization();           // 啓用-授權功能
 app.Use(async (context, next) => { // RequestBodyReader
 
     var request = context.Request;
+
+    /*// 獲取所有的 URL 參數
+    var urlParameters = context.Request.Query;
+    Console.WriteLine($"Test1: {context.Request.RouteValues.Count > 0}\n\n");
+    // 獲取所有的表單參數
+    var formParameters = await context.Request.ReadFormAsync();
+    Console.WriteLine($"Test2: {formParameters}\n\n");
+*/
     if (request.Method != HttpMethods.Post) {
         await next(context);
         return;
@@ -129,6 +152,8 @@ app.Use(async (context, next) => { // RequestBodyReader
         ms.Seek(0, SeekOrigin.Begin);
         request.Body = ms;
     }
+
+    
 
     // 執行-下一個中間件
     await next(context);
@@ -147,5 +172,6 @@ app.MapControllerRoute(             // 預設 URL 路由頁面 index.cshtml   [S
 /************************************************
 * IHostBuilder
 */
+
 app.Run();
 #endregion
